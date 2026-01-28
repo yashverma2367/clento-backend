@@ -13,6 +13,14 @@ export class LeadService {
         return lead;
     }
 
+    public async bulkCreate(dataArray: LeadInsertDto[]): Promise<LeadResponseDto[]> {
+        if (!Array.isArray(dataArray) || dataArray.length === 0) {
+            return [];
+        }
+        const leads = await this.leadRepository.bulkCreate(dataArray);
+        return leads;
+    }
+
     public async getAllByCampaignId(campaignId: string): Promise<LeadResponseDto[]> {
         const leads = await this.leadRepository.findByField('campaign_id', campaignId);
         return leads;

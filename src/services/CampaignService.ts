@@ -1,4 +1,4 @@
-import { CreateCampaignDto, CampaignResponseDto, UpdateCampaignDto, CreateCampaignStepDto, CampaignStepResponseDto } from '../dto/campaigns.dto';
+import { CreateCampaignDto, CampaignResponseDto, UpdateCampaignDto, CreateCampaignStepDto, CampaignStepResponseDto, CampaignStatus } from '../dto/campaigns.dto';
 import { BadRequestError, DisplayError, NotFoundError } from '../errors/AppError';
 import { EWorkflowNodeType, WorkflowJson } from '../types/workflow.types';
 import { StorageService } from './StorageService';
@@ -51,6 +51,14 @@ export class CampaignService {
             throw new DisplayError('An Error Occured While Fetching Campaigns');
         }
     }
+
+    async getCampaignsBySenderAccount(senderAccountId: string): Promise<CampaignResponseDto[]> {
+        try {
+            return await this.campaignRepository.findBySenderAccount(senderAccountId);
+        } catch (error) {
+            throw new DisplayError('An Error Occurred While Fetching Campaigns By Sender');
+        }
+    }
     async getWorkflow(campaign: CampaignResponseDto) {
         // Download the workflow file as buffer
         if (!campaign.organization_id) {
@@ -95,6 +103,35 @@ export class CampaignService {
             return stats;
         } catch (error) {
             throw new DisplayError('An Error Occured While Fetching Campaigns');
+        }
+    }
+
+    /**
+     * Get campaigns by status
+     */
+    async getCampaignsByStatus(status: CampaignStatus): Promise<CampaignResponseDto[]> {
+        try {
+            return await this.campaignRepository.findByStatus(status);
+        } catch (error) {
+            throw new DisplayError('An Error Occurred While Fetching Campaigns');
+        }
+    }
+
+    /**
+     * Get campaigns with SCHEDULED or DRAFT status that have a start_date
+     */
+    async getCampaignsByStatusAndStartDate(): Promise<CampaignResponseDto[]> {
+        try {
+            // Get SCHEDULED campaigns
+            const scheduled = await this.campaignRepository.findByStatus(CampaignStatus.SCHEDULED);
+            // Get DRAFT campaigns
+            const drafts = await this.campaignRepository.findByStatus(CampaignStatus.DRAFT);
+
+            // Combine and filter to only include campaigns with start_date
+            const allCampaigns = [...scheduled, ...drafts];
+            return allCampaigns.filter(campaign => campaign.start_date !== null && campaign.start_date !== undefined);
+        } catch (error) {
+            throw new DisplayError('An Error Occurred While Fetching Campaigns');
         }
     }
 }

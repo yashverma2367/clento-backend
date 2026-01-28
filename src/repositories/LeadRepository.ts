@@ -175,6 +175,27 @@ export class LeadRepository extends BaseRepository<LeadResponseDto, LeadInsertDt
     }
 
     /**
+     * Find lead IDs by campaign IDs (for rate-limit deferral)
+     */
+    async findLeadIdsByCampaignIds(campaignIds: string[]): Promise<string[]> {
+        if (campaignIds.length === 0) return [];
+        try {
+            const { data, error } = await this.client
+                .from(this.tableName)
+                .select('id')
+                .in('campaign_id', campaignIds);
+            if (error) {
+                logger.error('Error finding lead IDs by campaign IDs', { error, campaignIds });
+                throw new DatabaseError('Failed to retrieve lead IDs');
+            }
+            return (data || []).map((row: { id: string }) => row.id);
+        } catch (error) {
+            logger.error('Error in findLeadIdsByCampaignIds', { error, campaignIds });
+            throw error instanceof DatabaseError ? error : new DatabaseError('Failed to retrieve lead IDs');
+        }
+    }
+
+    /**
      * Find lead by LinkedIn URL
      */
     async findByLinkedInUrl(linkedinUrl: string): Promise<LeadResponseDto | null> {
@@ -231,7 +252,7 @@ export class LeadRepository extends BaseRepository<LeadResponseDto, LeadInsertDt
         try {
             const { data, error } = await this.client
                 .from(this.tableName)
-                .insert(leads as any)
+                .insert(leads)
                 .select();
 
             if (error) {

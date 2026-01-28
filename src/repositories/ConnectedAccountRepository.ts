@@ -73,7 +73,7 @@ export class ConnectedAccountRepository extends BaseRepository<ConnectedAccountR
             // Filter out pending/incomplete accounts
             const connectedAccounts = (data || []).filter((account: ConnectedAccountResponseDto) => {
                 // Check if account is truly connected
-                const isConnected = account.status === 'connected' && account.email && account.email.trim() !== '' && account.provider_account_id && !account.provider_account_id.startsWith('pending-');
+                const isConnected = account.status === 'connected' && account.provider_account_id && !account.provider_account_id.startsWith('pending-');
 
                 logger.info('Filtering out pending/incomplete account', {
                     accountId: account.id,

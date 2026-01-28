@@ -19,7 +19,7 @@ class StartCampaignAPI extends ClentoAPI {
         if(campaign?.organization_id !== req.organizationId) {
             throw new DisplayError('You are not allowed to access this campaign');
         }
-        
+
         await this.temporalService.startCampaign(campaignId);
 
         return res.sendOKResponse({ message: 'Campaign Started' });

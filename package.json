@@ -41,6 +41,7 @@
     "svix": "^1.15.0",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.0",
+    "node-cron": "^3.0.3",
     "unipile-node-sdk": "^1.9.3",
     "winston": "^3.11.0",
     "zod": "^3.22.4"
@@ -54,6 +55,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/morgan": "^1.9.10",
     "@types/node": "^20.10.5",
+    "@types/node-cron": "^3.0.11",
     "@types/node-fetch": "^2.6.13",
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.6",

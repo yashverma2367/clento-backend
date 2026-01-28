@@ -23,6 +23,7 @@ class AccountConnectAPI extends ClentoAPI {
         // Mock user and organization for development
         const userId = req.userId;
         const organizationId = req.organizationId;
+        console.log("ORGANIZATION ID", req.organizationId);
 
         const subscription = req.subscription.hasPlans;
         const allowedSeats = req?.subscription?.totalSeats ?? 0;

@@ -14,6 +14,8 @@ import { setupSwagger } from './config/swagger';
 import { errorHandler } from './middleware/errorHandler';
 import { TemporalService } from './services/TemporalService';
 import { WorkerManager } from './temporal/worker';
+import { CronService } from './services/crons/CronService';
+import { cronJobs } from './cron/jobs';
 import './utils/expressExtensions'; // Import express extensions
 import './utils/arrayExtensions'; // Import array extensions globally
 import './utils/mapExtensions'; // Import map extensions globally
@@ -208,6 +210,20 @@ const startServer = async () => {
             logger.info('Server will continue without Temporal functionality');
         }
 
+        // Initialize and start cron jobs
+        try {
+            const cronService = CronService.getInstance();
+            cronService.registerJobs(cronJobs);
+            cronService.start();
+            logger.info('✅ Cron service initialized and started');
+        } catch (cronError) {
+            logger.error('Failed to initialize cron service', {
+                error: cronError instanceof Error ? cronError.message : String(cronError),
+                stack: cronError instanceof Error ? cronError.stack : undefined,
+            });
+            logger.info('Server will continue without cron functionality');
+        }
+
         // Start server
         const server = app.listen(env.PORT, () => {
             logger.info(`🚀 Server running on port ${env.PORT} in ${env.NODE_ENV} mode`);
@@ -250,6 +266,12 @@ const startServer = async () => {
                 // Shutdown Temporal workers gracefully
                 if (workerManager) {
                     await workerManager.shutdown();
+                }
+
+                // Shutdown cron jobs gracefully
+                const cronService = CronService.getInstance();
+                if (cronService.isServiceRunning()) {
+                    cronService.stop();
                 }
 
                 logger.info('✅ Graceful shutdown completed');

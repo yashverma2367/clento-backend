@@ -18,8 +18,8 @@ class AccountProfileSyncAPI extends ClentoAPI {
      * Manually sync profile data for an account
      */
     public POST = async (req: Request, res: Response): Promise<Response> => {
-        const query = req.getQuery();
-        const id = query.getParamAsString('id', true);
+        const body = req.getBody();
+        const id = body.getParamAsString('id', true);
         const userId = req.userId;
 
         logger.info('=== Manual profile sync requested ===', { accountId: id, userId });
@@ -34,34 +34,3 @@ class AccountProfileSyncAPI extends ClentoAPI {
 }
 
 export default new AccountProfileSyncAPI();
-
-/**
- * @swagger
- * /api/accounts/sync-profile:
- *   post:
- *     summary: Manually sync profile data for an account
- *     tags: [Connected Accounts]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *         description: Account ID
- *     responses:
- *       200:
- *         description: Profile synced successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 message:
- *                   type: string
- *                 data:
- *                   $ref: '#/components/schemas/ConnectedAccount'
- */

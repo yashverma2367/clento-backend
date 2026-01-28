@@ -129,6 +129,8 @@ export class UnipileService {
 
                 const response = await UnipileService.client!.account.createHostedAuthLink(unipileRequest);
 
+                console.log("RESPONSE FROM UNIPILE", response)
+
                 if (!response || !response.url) {
                     logger.error('=== INVALID UNIPILE RESPONSE ===', {
                         response,
@@ -182,10 +184,10 @@ export class UnipileService {
                 error:
                     error instanceof Error
                         ? {
-                              name: error.name,
-                              message: error.message,
-                              stack: error.stack,
-                          }
+                            name: error.name,
+                            message: error.message,
+                            stack: error.stack,
+                        }
                         : error,
                 params,
             });

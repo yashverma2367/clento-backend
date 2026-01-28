@@ -148,6 +148,8 @@ export const CampaignResponseDto = z.object({
     requests_sent_this_week: z.number().nullable(),
     last_daily_requests_reset: z.string().datetime().nullable().optional(),
     last_weekly_requests_reset: z.string().datetime().nullable().optional(),
+    started_at: z.string().datetime().nullable().optional(),
+    completed_at: z.string().datetime().nullable().optional(),
 });
 
 export const CampaignQueryDto = z.object({

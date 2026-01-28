@@ -108,6 +108,27 @@ export class CampaignRepository extends BaseRepository<CampaignResponseDto, Crea
     }
 
     /**
+     * Find campaigns by sender account ID
+     */
+    async findBySenderAccount(senderAccountId: string): Promise<CampaignResponseDto[]> {
+        try {
+            const { data, error } = await this.client
+                .from(this.tableName)
+                .select('*')
+                .eq('sender_account', senderAccountId)
+                .neq('is_deleted', true);
+            if (error) {
+                logger.error('Error finding campaigns by sender account', { error, senderAccountId });
+                throw new DatabaseError('Failed to fetch campaigns');
+            }
+            return (data || []) as CampaignResponseDto[];
+        } catch (error) {
+            logger.error('Error in findBySenderAccount', { error, senderAccountId });
+            throw error;
+        }
+    }
+
+    /**
      * Find campaigns by status
      */
     async findByStatus(status: string, organizationId?: string): Promise<CampaignResponseDto[]> {

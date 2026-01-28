@@ -325,6 +325,18 @@ export class ConnectedAccountService {
     }
 
     /**
+     * Set connection request blocked until timestamp (for rate-limit cooldown).
+     * Used by cron when Unipile returns "Cannot resend yet". No user auth check.
+     */
+    async setConnectionRequestBlockedUntil(accountId: string, untilIso: string): Promise<void> {
+        const account = await this.connectedAccountRepository.findById(accountId);
+        const metadata = (account.metadata || {}) as Record<string, unknown>;
+        await this.connectedAccountRepository.update(accountId, {
+            metadata: { ...metadata, connection_request_blocked_until: untilIso },
+        } as UpdateConnectedAccountDto);
+    }
+
+    /**
      * Update connected account
      */
     async updateAccount(id: string, data: UpdateConnectedAccountDto, userId: string): Promise<ConnectedAccountResponseDto> {

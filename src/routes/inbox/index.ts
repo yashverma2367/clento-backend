@@ -1,11 +1,9 @@
 import { Request, Response } from 'express';
-import ClentoAPI from '../../utils/apiUtil';
-import '../../utils/expressExtensions';
-import { CampaignService } from '../../services/CampaignService';
 import { DisplayError } from '../../errors/AppError';
 import { ConnectedAccountService } from '../../services/ConnectedAccountService';
-import { accountsValidator, UnipileClient } from 'unipile-node-sdk';
 import { UnipileService } from '../../services/UnipileService';
+import ClentoAPI from '../../utils/apiUtil';
+import '../../utils/expressExtensions';
 
 class DashboardAPI extends ClentoAPI {
     public path = '/api/inbox';
@@ -47,18 +45,30 @@ class DashboardAPI extends ClentoAPI {
         }
         const inbox = await this.unipileService.getInbox(provider_account_id, limit, cursor || undefined);
         const providers = inbox?.items.map(it => it.attendee_provider_id).filter(it => it !== undefined) || [];
+        console.log('Providers', providers.length)
         const attendesMap = new Map<string, any>();
 
         // Fetch profiles for all provider IDs
-        for (const providerId of providers) {
-            try {
-                const profile = await this.unipileService.getUserProfile(provider_account_id, providerId);
-                attendesMap.set(providerId, profile);
-            } catch (error) {
-                console.error(`Failed to get profile for provider ${providerId}:`, error);
-                attendesMap.set(providerId, null);
-            }
-        }
+        await providers.chunked(3).forEachAsyncOneByOne(async chunk => {
+            await chunk.forEachAsyncParallel(async it => {
+                try {
+                    const profile = await this.unipileService.getUserProfile(provider_account_id, it);
+                    attendesMap.set(it, profile);
+                } catch (error) {
+                    console.error(`Failed to get profile for provider ${it}:`, error);
+                    attendesMap.set(it, null);
+                }
+            })
+        })
+        // for (const providerId of providers) {
+        //     try {
+        //         const profile = await this.unipileService.getUserProfile(provider_account_id, providerId);
+        //         attendesMap.set(providerId, profile);
+        //     } catch (error) {
+        //         console.error(`Failed to get profile for provider ${providerId}:`, error);
+        //         attendesMap.set(providerId, null);
+        //     }
+        // }
 
         const inboxWithAccounts = inbox?.items.map(it => {
             const attendee = attendesMap.get(it?.attendee_provider_id || '');
@@ -72,9 +82,9 @@ class DashboardAPI extends ClentoAPI {
                 attendee_provider_id: it.attendee_provider_id,
                 attendee_profile: attendee
                     ? {
-                          name: attendee.first_name + ' ' + attendee.last_name || 'Unknown',
-                          profile_picture_url: attendee.profile_picture_url,
-                      }
+                        name: attendee.first_name + ' ' + attendee.last_name || 'Unknown',
+                        profile_picture_url: attendee.profile_picture_url,
+                    }
                     : null,
             };
         });

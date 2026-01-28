@@ -45,15 +45,6 @@ const envSchema = z.object({
         .string()
         .transform(val => val === 'true')
         .default('false'),
-    // Temporal Worker Configuration
-    ENABLE_TEMPORAL_WORKER: z
-        .string()
-        .transform(val => val === 'true')
-        .default('true'),
-    TEMPORAL_WORKER_COUNT: z
-        .string()
-        .transform(val => parseInt(val, 10))
-        .default('1'),
     REQUESTS_PER_DAY: z.coerce.number().default(60),
     REQUESTS_PER_WEEK: z.coerce.number().default(200),
 
@@ -61,11 +52,6 @@ const envSchema = z.object({
     JWT_SECRET: z.string().min(1, 'JWT Secret is required'),
 
     OPENAI_API_KEY: z.string(),
-
-    USE_DEVELOPMENT_QUEUE: z
-        .string()
-        .transform(val => val === 'true')
-        .default('false'),
 });
 
 // Parse and validate environment variables

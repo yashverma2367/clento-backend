@@ -153,6 +153,48 @@ export class CampaignManager {
             startedAt: now,
         });
     }
+
+    public async pauseCampaign(campaignId: string): Promise<void> {
+        const campaign = await this.campaignService.getCampaignById(campaignId);
+        if (!campaign) {
+            throw new DisplayError('Campaign not found');
+        }
+        if (campaign.status !== CampaignStatus.IN_PROGRESS && campaign.status !== CampaignStatus.PAUSED) {
+            throw new DisplayError(`Cannot pause campaign with status ${campaign.status}`);
+        }
+        await this.campaignService.updateCampaign(campaignId, { status: CampaignStatus.PAUSED });
+        logger.info('Campaign paused', { campaignId });
+    }
+
+    public async resumeCampaign(campaignId: string): Promise<void> {
+        const campaign = await this.campaignService.getCampaignById(campaignId);
+        if (!campaign) {
+            throw new DisplayError('Campaign not found');
+        }
+        if (campaign.status !== CampaignStatus.PAUSED) {
+            throw new DisplayError(`Cannot resume campaign with status ${campaign.status}`);
+        }
+        await this.campaignService.updateCampaign(campaignId, { status: CampaignStatus.IN_PROGRESS });
+        logger.info('Campaign resumed', { campaignId });
+    }
+
+    public async getCampaignStatus(campaignId: string): Promise<{
+        status: string;
+        isRunning: boolean;
+        isPaused: boolean;
+    }> {
+        const campaign = await this.campaignService.getCampaignById(campaignId);
+        if (!campaign) {
+            throw new DisplayError('Campaign not found');
+        }
+        const status = campaign.status;
+        return {
+            status,
+            isRunning: status === CampaignStatus.IN_PROGRESS,
+            isPaused: status === CampaignStatus.PAUSED,
+        };
+    }
+
     public async startDailyLeads(campaignId: string, options?: { runFailed?: boolean }) {
         const campaign = await this.campaignService.getCampaignById(campaignId);
         if (!campaign) {
@@ -949,6 +991,9 @@ export class CampaignManager {
         const campaign = await this.campaignService.getCampaignById(lead.campaign_id);
         if (!campaign) {
             logger.error('Campaign not found', { campaignId: lead.campaign_id });
+            return;
+        }
+        if (campaign.status === CampaignStatus.PAUSED) {
             return;
         }
         if (!campaign.sender_account) {

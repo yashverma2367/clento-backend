@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { TemporalService } from '../../services/TemporalService';
+import { CampaignManager } from '../../services/crons/CampaignWorkflows';
 import { CampaignService } from '../../services/CampaignService';
 import { ForbiddenError, NotFoundError } from '../../errors/AppError';
 import ClentoAPI from '../../utils/apiUtil';
@@ -9,7 +9,7 @@ class CampaignStatusAPI extends ClentoAPI {
     public path = '/api/campaigns/status';
     public authType: 'DASHBOARD' = 'DASHBOARD';
 
-    private temporalService = TemporalService.getInstance();
+    private campaignManager = new CampaignManager();
     private campaignService = new CampaignService();
 
     public GET = async (req: Request, res: Response): Promise<Response> => {
@@ -26,7 +26,7 @@ class CampaignStatusAPI extends ClentoAPI {
             throw new ForbiddenError('You are not allowed to access this campaign');
         }
 
-        const status = await this.temporalService.getCampaignStatus(campaignId);
+        const status = await this.campaignManager.getCampaignStatus(campaignId);
 
         return res.sendOKResponse({ data: status });
     };

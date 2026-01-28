@@ -12,8 +12,6 @@ import supabase from './config/supabase';
 import sessions from 'client-sessions';
 import { setupSwagger } from './config/swagger';
 import { errorHandler } from './middleware/errorHandler';
-import { TemporalService } from './services/TemporalService';
-import { WorkerManager } from './temporal/worker';
 import { CronService } from './services/crons/CronService';
 import { cronJobs } from './cron/jobs';
 import './utils/expressExtensions'; // Import express extensions
@@ -23,7 +21,6 @@ import logger from './utils/logger';
 import registerAllRoutes from './utils/registerRoutes';
 import { rawBodyCapture } from './middleware/validation';
 import { loggers } from 'winston';
-import { getCampaignTaskQueue, getLeadMonitorTaskQueue } from './utils/queueUtil';
 
 // Create Express application
 const app = express();
@@ -167,49 +164,6 @@ const startServer = async () => {
             // Port is free (lsof returns error when no processes found)
         }
 
-        // NOW initialize Temporal service and workers AFTER old process is killed
-        let workerManager: WorkerManager | null = null;
-        try {
-            const temporalService = TemporalService.getInstance();
-            await temporalService.initialize();
-            const campaignQueue = getCampaignTaskQueue();
-            const leadQueue = getLeadMonitorTaskQueue();
-            logger.info('Temporal service initialized successfully');
-            logger.info('Using Queues', { campaignQueue, leadQueue });
-
-            // Start Temporal worker if enabled
-            if (env.ENABLE_TEMPORAL_WORKER) {
-                workerManager = WorkerManager.getInstance();
-                const workerCount = env.TEMPORAL_WORKER_COUNT || 1;
-
-                if (workerCount > 1) {
-                    await workerManager.startMultipleWorkers(workerCount);
-                } else {
-                    await workerManager.startWorker();
-                }
-
-                logger.info('✅ Temporal worker(s) started successfully', {
-                    workerCount,
-                    maxConcurrentCampaigns: 50 * workerCount, // Based on worker config
-                });
-            } else {
-                logger.info('Temporal workers disabled by configuration');
-            }
-
-            // Log active campaigns for monitoring
-            const stats = await temporalService.getCampaignStats();
-            logger.info('Campaign statistics', stats);
-        } catch (temporalError) {
-            logger.error('Failed to initialize Temporal service', {
-                error: temporalError instanceof Error ? temporalError.message : String(temporalError),
-                stack: temporalError instanceof Error ? temporalError.stack : undefined,
-                name: temporalError instanceof Error ? temporalError.name : undefined,
-                cause: temporalError instanceof Error ? temporalError.cause : undefined,
-                fullError: temporalError,
-            });
-            logger.info('Server will continue without Temporal functionality');
-        }
-
         // Initialize and start cron jobs
         try {
             const cronService = CronService.getInstance();
@@ -228,10 +182,6 @@ const startServer = async () => {
         const server = app.listen(env.PORT, () => {
             logger.info(`🚀 Server running on port ${env.PORT} in ${env.NODE_ENV} mode`);
             logger.info(`📚 API documentation available at http://localhost:${env.PORT}/api-docs`);
-
-            if (workerManager?.isWorkerRunning()) {
-                logger.info('⚡ Temporal workers are running and processing campaigns');
-            }
         });
 
         // Handle server errors (e.g., port already in use)
@@ -262,11 +212,6 @@ const startServer = async () => {
                     logger.warn('Forcing shutdown after timeout');
                     process.exit(1);
                 }, 10000);
-
-                // Shutdown Temporal workers gracefully
-                if (workerManager) {
-                    await workerManager.shutdown();
-                }
 
                 // Shutdown cron jobs gracefully
                 const cronService = CronService.getInstance();

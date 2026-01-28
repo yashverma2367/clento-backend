@@ -1,6 +1,5 @@
 import { Request, Response } from 'express';
-import { DisplayError, NotFoundError, ValidationError } from '../../../errors/AppError';
-import { ReporterLeadMonitorService } from '../../../services/ReporterLeadMonitorService';
+import { NotFoundError, ValidationError } from '../../../errors/AppError';
 import { ReporterLeadRepository } from '../../../repositories/reporterRepositories/LeadRepository';
 import ClentoAPI from '../../../utils/apiUtil';
 import '../../../utils/expressExtensions';
@@ -9,7 +8,6 @@ class API extends ClentoAPI {
     public path = '/api/reporter/leads/monitor';
     public authType: 'REPORTER' = 'REPORTER';
 
-    private monitorService = new ReporterLeadMonitorService();
     private leadRepository = new ReporterLeadRepository();
 
     public POST = async (req: Request, res: Response): Promise<Response> => {
@@ -31,19 +29,10 @@ class API extends ClentoAPI {
             throw new ValidationError('Lead does not belong to user');
         }
 
-        try {
-            const result = await this.monitorService.startMonitoring({ leadId });
-
-            return res.sendOKResponse({
-                success: true,
-                message: 'Lead monitoring workflow started',
-                workflowId: result.workflowId,
-                runId: result.runId,
-                leadId,
-            });
-        } catch (error: any) {
-            throw new DisplayError(`Failed to start lead monitoring workflow: ${error.message}`);
-        }
+        return res.sendOKResponse({
+            success: false,
+            message: 'This service has been disabled temporarily.',
+        });
     };
 }
 

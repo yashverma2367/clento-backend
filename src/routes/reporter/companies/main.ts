@@ -2,7 +2,6 @@ import { Request, Response } from 'express';
 import { CreateReporterCompanyLeadDto } from '../../../dto/reporterDtos/companies.dto';
 import { DisplayError, NotFoundError, ValidationError } from '../../../errors/AppError';
 import { ReporterCompanyLeadRepository } from '../../../repositories/reporterRepositories/CompanyRepository';
-import { ReporterCompanyMonitorService } from '../../../services/ReporterCompanyMonitorService';
 import { ReporterConnectedAccountService } from '../../../services/ReporterConnectedAccountService';
 import ClentoAPI, { CheckNever } from '../../../utils/apiUtil';
 import '../../../utils/expressExtensions';
@@ -19,7 +18,6 @@ class API extends ClentoAPI {
     public path = '/api/reporter/companies';
     public authType: 'REPORTER' = 'REPORTER';
 
-    private monitorService = new ReporterCompanyMonitorService();
     private companyRepository = new ReporterCompanyLeadRepository();
     private connectedAccountService = new ReporterConnectedAccountService();
 
@@ -39,29 +37,17 @@ class API extends ClentoAPI {
             throw new ValidationError('Company does not belong to user');
         }
 
-        try {
-            await this.monitorService.pauseMonitoring(companyId, userId);
-
-            return res.sendOKResponse({
-                success: true,
-                message: 'Company monitoring paused successfully',
-                companyId,
-            });
-        } catch (error: any) {
-            throw new DisplayError(`Failed to pause company monitoring: ${error.message}`);
-        }
+        return res.sendOKResponse({
+            success: false,
+            message: 'This service has been disabled temporarily.',
+            companyId,
+        });
     };
 
     private handleResumeCampaign = async (req: Request, res: Response) => {
         const userId = req.reporter?.id;
         if (!userId) {
             throw new ValidationError('User ID is required');
-        }
-
-        const accounts = await this.connectedAccountService.getAnyConnectedLinkedInAccount();
-
-        if (!accounts) {
-            throw new DisplayError('You need to connect your LinkedIn account first to resume company monitoring');
         }
 
         const body = req.getBody();
@@ -76,17 +62,11 @@ class API extends ClentoAPI {
             throw new ValidationError('Company does not belong to user');
         }
 
-        try {
-            await this.monitorService.resumeMonitoring(companyId, userId);
-
-            return res.sendOKResponse({
-                success: true,
-                message: 'Company monitoring resumed successfully',
-                companyId,
-            });
-        } catch (error: any) {
-            throw new DisplayError(`Failed to resume company monitoring: ${error.message}`);
-        }
+        return res.sendOKResponse({
+            success: false,
+            message: 'This service has been disabled temporarily.',
+            companyId,
+        });
     };
 
     private handleDeleteCompany = async (req: Request, res: Response) => {
@@ -100,9 +80,6 @@ class API extends ClentoAPI {
         if (company.user_id !== userId) {
             throw new DisplayError('Not Found');
         }
-        await this.monitorService.stopMonitoring(companyId);
-        // Note: Since there's no is_deleted field, we'll just update the timestamp
-        // If soft delete is needed, add is_deleted field to schema
         await this.companyRepository.update(companyId, { is_deleted: true, updated_at: new Date().toISOString() });
         return res.sendOKResponse({ success: true, message: 'Company deleted successfully', companyId });
     };
@@ -112,18 +89,10 @@ class API extends ClentoAPI {
 
         const companies = await this.companyRepository.getUserCompanies(userId);
 
-        const companiesWithStatus = await companies.mapAsyncOneByOne(async company => {
-            const status = await this.monitorService.getMonitoringStatus(company.id);
-            return {
-                ...company,
-                status: status.status !== 'CANCELLED' ? status : null,
-            };
-        });
-
         return res.sendOKResponse({
             success: true,
             message: 'Companies fetched successfully',
-            companies: companiesWithStatus,
+            companies: companies.map(company => ({ ...company, status: null })),
         });
     };
 
@@ -160,24 +129,6 @@ class API extends ClentoAPI {
                     linkedin_url: url,
                 }));
                 const createdCompanies = await this.companyRepository.bulkCreate(companies);
-
-                // Automatically start monitoring workflows for all newly created companies
-                const monitoringPromises = createdCompanies.map(async company => {
-                    try {
-                        await this.monitorService.startMonitoring({ companyId: company.id });
-                    } catch (monitorError: any) {
-                        // Log error but don't fail the upload if monitoring fails to start
-                        logger.error('Failed to start monitoring for company', {
-                            companyId: company.id,
-                            error: monitorError.message,
-                        });
-                    }
-                });
-
-                // Start all monitoring workflows in parallel (don't await to avoid blocking response)
-                Promise.all(monitoringPromises).catch(error => {
-                    logger.error('Error starting monitoring workflows', { error });
-                });
 
                 return res.sendOKResponse({
                     success: true,

@@ -1,6 +1,5 @@
 import { Request, Response } from 'express';
-import { DisplayError, NotFoundError, ValidationError } from '../../../errors/AppError';
-import { ReporterCompanyMonitorService } from '../../../services/ReporterCompanyMonitorService';
+import { NotFoundError, ValidationError } from '../../../errors/AppError';
 import { ReporterCompanyLeadRepository } from '../../../repositories/reporterRepositories/CompanyRepository';
 import ClentoAPI from '../../../utils/apiUtil';
 import '../../../utils/expressExtensions';
@@ -9,7 +8,6 @@ class API extends ClentoAPI {
     public path = '/api/reporter/companies/monitor';
     public authType: 'REPORTER' = 'REPORTER';
 
-    private monitorService = new ReporterCompanyMonitorService();
     private companyRepository = new ReporterCompanyLeadRepository();
 
     public POST = async (req: Request, res: Response): Promise<Response> => {
@@ -31,19 +29,10 @@ class API extends ClentoAPI {
             throw new ValidationError('Company does not belong to user');
         }
 
-        try {
-            const result = await this.monitorService.startMonitoring({ companyId });
-
-            return res.sendOKResponse({
-                success: true,
-                message: 'Company monitoring workflow started',
-                workflowId: result.workflowId,
-                runId: result.runId,
-                companyId,
-            });
-        } catch (error: any) {
-            throw new DisplayError(`Failed to start company monitoring workflow: ${error.message}`);
-        }
+        return res.sendOKResponse({
+            success: false,
+            message: 'This service has been disabled temporarily.',
+        });
     };
 }
 

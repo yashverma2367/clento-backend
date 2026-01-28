@@ -8,19 +8,13 @@
     "start": "node dist/index.js",
     "dev": "tsc && nodemon --watch src --ext ts --exec \"tsc && node dist/index.js\"",
     "lint": "eslint . --ext .ts",
-    "test": "jest",
-    "test:temporal": "ts-node test-temporal.ts",
-    "test:temporal:simple": "ts-node test-temporal-simple.ts",
-    "test:temporal:worker": "ts-node test-temporal-with-worker.ts"
+    "test": "jest"
   },
   "dependencies": {
     "@clerk/backend": "^2.14.0",
     "@clerk/clerk-sdk-node": "^4.13.4",
     "@google-cloud/storage": "^7.17.1",
     "@supabase/supabase-js": "^2.39.3",
-    "@temporalio/client": "^1.13.0",
-    "@temporalio/worker": "^1.13.0",
-    "@temporalio/workflow": "^1.13.0",
     "@types/client-sessions": "^0.8.7",
     "@types/multer": "^2.0.0",
     "axios": "^1.13.2",

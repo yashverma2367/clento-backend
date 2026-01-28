@@ -1,12 +1,10 @@
 import { Request, Response } from 'express';
 import { DisplayError, NotFoundError, ValidationError } from '../../../errors/AppError';
 import { ReporterLeadService } from '../../../services/ReporterLeadService';
-import { ReporterLeadMonitorService } from '../../../services/ReporterLeadMonitorService';
 import { ReporterLeadRepository } from '../../../repositories/reporterRepositories/LeadRepository';
 import ClentoAPI, { CheckNever } from '../../../utils/apiUtil';
 import '../../../utils/expressExtensions';
 import { CreateReporterLeadDto } from '../../../dto/reporterDtos/leads.dto';
-import { ReporterConnectedAccountService } from '../../../services/ReporterConnectedAccountService';
 import logger from '../../../utils/logger';
 
 enum ECommand {
@@ -21,9 +19,7 @@ class API extends ClentoAPI {
     public authType: 'REPORTER' = 'REPORTER';
 
     private leadService = new ReporterLeadService();
-    private monitorService = new ReporterLeadMonitorService();
     private leadRepository = new ReporterLeadRepository();
-    private connectedAccountService = new ReporterConnectedAccountService();
 
     private handlePauseCampaign = async (req: Request, res: Response) => {
         const userId = req.reporter?.id;
@@ -41,29 +37,17 @@ class API extends ClentoAPI {
             throw new ValidationError('Lead does not belong to user');
         }
 
-        try {
-            await this.monitorService.pauseMonitoring(leadId, userId);
-
-            return res.sendOKResponse({
-                success: true,
-                message: 'Lead monitoring paused successfully',
-                leadId,
-            });
-        } catch (error: any) {
-            throw new DisplayError(`Failed to pause lead monitoring: ${error.message}`);
-        }
+        return res.sendOKResponse({
+            success: false,
+            message: 'This service has been disabled temporarily.',
+            leadId,
+        });
     };
 
     private handleResumeCampaign = async (req: Request, res: Response) => {
         const userId = req.reporter?.id;
         if (!userId) {
             throw new ValidationError('User ID is required');
-        }
-
-        const accounts = await this.connectedAccountService.getAnyConnectedLinkedInAccount();
-
-        if(!accounts) {
-            throw new DisplayError('You need to connect your LinkedIn account first to resume lead monitoring');
         }
 
         const body = req.getBody();
@@ -78,17 +62,11 @@ class API extends ClentoAPI {
             throw new ValidationError('Lead does not belong to user');
         }
 
-        try {
-            await this.monitorService.resumeMonitoring(leadId, userId);
-
-            return res.sendOKResponse({
-                success: true,
-                message: 'Lead monitoring resumed successfully',
-                leadId,
-            });
-        } catch (error: any) {
-            throw new DisplayError(`Failed to resume lead monitoring: ${error.message}`);
-        }
+        return res.sendOKResponse({
+            success: false,
+            message: 'This service has been disabled temporarily.',
+            leadId,
+        });
     };
 
     private handleDeleteLead = async (req: Request, res: Response) => {
@@ -102,7 +80,6 @@ class API extends ClentoAPI {
         if (lead.user_id !== userId) {
             throw new DisplayError('Not Found');
         }
-        await this.monitorService.stopMonitoring(leadId);
         await this.leadRepository.update(leadId, { is_deleted: true, updated_at: new Date().toISOString() });
         return res.sendOKResponse({ success: true, message: 'Lead deleted successfully', leadId });
     };
@@ -112,18 +89,10 @@ class API extends ClentoAPI {
 
         const leads = await this.leadRepository.getUserLeads(userId);
 
-        const leadsWithStatus = await leads.mapAsyncOneByOne(async lead => {
-            const status = await this.monitorService.getMonitoringStatus(lead.id);
-            return {
-                ...lead,
-                status: status.status === 'RUNNING' ? status : null,
-            };
-        });
-
         return res.sendOKResponse({
             success: true,
             message: 'Leads fetched successfully',
-            leads: leadsWithStatus,
+            leads: leads.map(lead => ({ ...lead, status: null })),
         });
     };
 
@@ -167,24 +136,6 @@ class API extends ClentoAPI {
                     last_company_id: null,
                 }));
                 const createdLeads = await this.leadRepository.bulkCreate(leads);
-
-                // Automatically start monitoring workflows for all newly created leads
-                const monitoringPromises = createdLeads.map(async (lead) => {
-                    try {
-                        await this.monitorService.startMonitoring({ leadId: lead.id });
-                    } catch (monitorError: any) {
-                        // Log error but don't fail the upload if monitoring fails to start
-                        logger.error('Failed to start monitoring for lead', {
-                            leadId: lead.id,
-                            error: monitorError.message,
-                        });
-                    }
-                });
-
-                // Start all monitoring workflows in parallel (don't await to avoid blocking response)
-                Promise.all(monitoringPromises).catch((error) => {
-                    logger.error('Error starting monitoring workflows', { error });
-                });
 
                 return res.sendOKResponse({
                     success: true,

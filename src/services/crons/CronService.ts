@@ -38,11 +38,11 @@ export class CronService {
             return;
         }
 
+        const registeredJobs: string[] = [];
+
         try {
             const task = cron.schedule(job.schedule, async () => {
                 const startTime = Date.now();
-                logger.info(`Starting cron job: ${job.name}`);
-
                 try {
                     await job.task();
                     const duration = Date.now() - startTime;
@@ -63,13 +63,17 @@ export class CronService {
 
             this.jobs.set(job.name, task);
             this.jobStatus.set(job.name, false);
-            logger.info(`Registered cron job: ${job.name}`, { schedule: job.schedule });
+
+            registeredJobs.push(job.name);
+
         } catch (error) {
             logger.error(`Failed to register cron job: ${job.name}`, {
                 error: error instanceof Error ? error.message : String(error),
                 schedule: job.schedule,
             });
         }
+        const registeredJobsString = registeredJobs.join(', ');
+        logger.info(`Registered cron jobs: ${registeredJobsString}`);
     }
 
     /**
@@ -91,7 +95,6 @@ export class CronService {
         this.jobs.forEach((task, name) => {
             task.start();
             this.jobStatus.set(name, true);
-            logger.info(`Started cron job: ${name}`);
         });
 
         this.isRunning = true;

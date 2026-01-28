@@ -7,20 +7,15 @@ import { NotFoundError, ValidationError } from '../errors/AppError';
 import logger from '../utils/logger';
 import { ReporterLeadRepository } from '../repositories/reporterRepositories/LeadRepository';
 import { CsvService } from './CsvService';
-import { ReporterLeadMonitorService } from './ReporterLeadMonitorService';
-
-
 
 /**
  * Service for managing reporter leads
  */
 export class ReporterLeadService {
     private leadRepository: ReporterLeadRepository;
-    private monitorService: ReporterLeadMonitorService;
 
     constructor() {
         this.leadRepository = new ReporterLeadRepository();
-        this.monitorService = new ReporterLeadMonitorService();
     }
 
     /**
@@ -57,22 +52,6 @@ export class ReporterLeadService {
                 userId: data.user_id,
                 linkedinUrl: data.linkedin_url,
             });
-
-            // Automatically start monitoring workflow for the new lead
-            try {
-                await this.monitorService.startMonitoring({ leadId: lead.id });
-                logger.info('Lead monitoring workflow started automatically', {
-                    leadId: lead.id,
-                    userId: data.user_id,
-                });
-            } catch (monitorError: any) {
-                // Log error but don't fail lead creation if monitoring fails to start
-                logger.error('Failed to start monitoring workflow for new lead', {
-                    error: monitorError.message,
-                    leadId: lead.id,
-                    userId: data.user_id,
-                });
-            }
 
             return lead;
         } catch (error) {

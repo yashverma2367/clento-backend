@@ -35,8 +35,8 @@ async function retryFailedSteps(): Promise<void> {
 export const cronJobs: CronJob[] = [
     {
         name: 'check-scheduled-campaigns',
-        // schedule: '0 * * * *', // Every 1 hour, at minute 0
-        schedule: '* * * * *', // For Testing run every minute
+        schedule: '0 * * * *', // Every 1 hour, at minute 0
+        // schedule: '* * * * *', // For Testing run every minute
         task: checkAndStartScheduledCampaigns,
         enabled: true,
     },
@@ -49,8 +49,8 @@ export const cronJobs: CronJob[] = [
     },
     {
         name: 'process-daily-leads',
-        //schedule: '*/15 * * * *', // Every 15 minutes
-        schedule: '* * * * *', // For Testing run every minute
+        schedule: '*/15 * * * *', // Every 15 minutes
+        // schedule: '* * * * *', // For Testing run every minute
         task: processDailyLeads,
         enabled: true
     },

@@ -3,7 +3,7 @@ import { CampaignStatus, UpdateCampaignDto } from '../../dto/campaigns.dto';
 import { DisplayError, ForbiddenError, NotFoundError } from '../../errors/AppError';
 import { CampaignService } from '../../services/CampaignService';
 import { StorageService } from '../../services/StorageService';
-import { TemporalService } from '../../services/TemporalService';
+import { CampaignManager } from '../../services/crons/CampaignWorkflows';
 import ClentoAPI from '../../utils/apiUtil';
 import '../../utils/expressExtensions'; // Import extensions
 import { EAction, EApproach, ECallToAction, EFocus, EFormality, EIntention, ELanguage, EMessageLength, EPathType, EPersonalization, ETone, EWorkflowNodeType } from '../../types/workflow.types';
@@ -17,7 +17,7 @@ class CreateCampaignAPI extends ClentoAPI {
 
     private campaignService = new CampaignService();
     private storageService = new StorageService();
-    private temporalService = TemporalService.getInstance();
+    private campaignManager = new CampaignManager();
     private bucketName = 'campaign-flow';
     /**
      * Create new campaign
@@ -235,18 +235,10 @@ class CreateCampaignAPI extends ClentoAPI {
             // Start the campaign immediately if no start_date or start_date has passed
             if (shouldStartImmediately) {
                 try {
-                    console.log('starting the campaign immediately', campaign.id);
-                    await this.temporalService.startCampaign(campaign.id);
+                    await this.campaignManager.startCampaign(campaign.id);
                 } catch (error: any) {
-                    // Handle workflow already exists error gracefully
-                    if (error?.name === 'WorkflowExecutionAlreadyStartedError' || error?.message?.includes('already started') || error?.message?.includes('already exists')) {
-                        console.log('Campaign workflow already running', campaign.id);
-                        // Campaign workflow is already running, which is fine
-                    } else {
-                        // Log other errors but don't fail campaign update
-                        // Campaign is already updated, user can start it manually later
-                        console.error('Failed to start campaign immediately', error);
-                    }
+                    // Campaign may already be running or other validation; don't fail update
+                    console.error('Failed to start campaign immediately', error);
                 }
             }
 

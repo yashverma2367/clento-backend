@@ -23,7 +23,7 @@ async function startDailyLeadsForCampaigns(): Promise<void> {
 }
 
 async function processDailyLeads(): Promise<void> {
-    logger.info('Processing daily leads every 1 hour');
+    logger.info('Processing pending workflow steps (runs every minute so step delays are respected)');
     await campaignManager.processDailyLeads();
 }
 
@@ -49,8 +49,7 @@ export const cronJobs: CronJob[] = [
     },
     {
         name: 'process-daily-leads',
-        schedule: '*/15 * * * *', // Every 15 minutes
-        // schedule: '* * * * *', // For Testing run every minute
+        schedule: '* * * * *', // Every minute – so execute_after delays are respected (steps run when due, not batched at 15 min)
         task: processDailyLeads,
         enabled: false
     },

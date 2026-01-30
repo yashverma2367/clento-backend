@@ -38,27 +38,27 @@ export const cronJobs: CronJob[] = [
         schedule: '0 * * * *', // Every 1 hour, at minute 0
         // schedule: '* * * * *', // For Testing run every minute
         task: checkAndStartScheduledCampaigns,
-        enabled: true,
+        enabled: false,
     },
     {
         name: 'start-daily-leads',
         schedule: '0 0 * * *', // Every day at midnight
         // schedule: '* * * * *', // For Testing run every minute
         task: startDailyLeadsForCampaigns,
-        enabled: true,
+        enabled: false,
     },
     {
         name: 'process-daily-leads',
         schedule: '*/15 * * * *', // Every 15 minutes
         // schedule: '* * * * *', // For Testing run every minute
         task: processDailyLeads,
-        enabled: true
+        enabled: false
     },
     {
         name: 'retry-failed-steps',
         schedule: '0 * * * *', // Every 1 hour, at minute 0
         // schedule: '* * * * *', // For Testing run every minute
         task: retryFailedSteps,
-        enabled: true
+        enabled: false
     }
 ];

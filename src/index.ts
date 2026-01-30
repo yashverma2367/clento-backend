@@ -21,6 +21,7 @@ import logger from './utils/logger';
 import registerAllRoutes from './utils/registerRoutes';
 import { rawBodyCapture } from './middleware/validation';
 import { loggers } from 'winston';
+import Slack from './utils/slack';
 
 // Create Express application
 const app = express();
@@ -35,13 +36,13 @@ const corsOptions = {
     origin:
         env.NODE_ENV === 'development'
             ? (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-                  // Allow all localhost origins and app.clento.ai in development
-                  if (!origin || origin.match(/^http:\/\/localhost:\d+$/) || origin === 'https://app.clento.ai' || origin === 'https://reporter.clento.ai') {
-                      callback(null, true);
-                  } else {
-                      callback(new Error('Not allowed by CORS'));
-                  }
-              }
+                // Allow all localhost origins and app.clento.ai in development
+                if (!origin || origin.match(/^http:\/\/localhost:\d+$/) || origin === 'https://app.clento.ai' || origin === 'https://reporter.clento.ai') {
+                    callback(null, true);
+                } else {
+                    callback(new Error('Not allowed by CORS'));
+                }
+            }
             : env.CORS_ORIGIN,
     credentials: true,
 };

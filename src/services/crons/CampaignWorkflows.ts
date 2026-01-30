@@ -1,6 +1,6 @@
 import { ConnectedAccountResponseDto } from '../../dto/accounts.dto';
 import { CampaignResponseDto, CampaignStatus } from '../../dto/campaigns.dto';
-import { LeadInsertDto, LeadResponseDto } from '../../dto/leads.dto';
+import { LeadInsertDto, LeadListResponseDto, LeadResponseDto } from '../../dto/leads.dto';
 import { CreateWorkflowStepDto, EWorkflowStepStatus, EWorkflowType, UpdateWorkflowStepDto, WorkflowStepResponseDto } from '../../dto/workflowSteps.dto';
 import { DisplayError } from '../../errors/AppError';
 import { LeadRepository } from '../../repositories/LeadRepository';
@@ -9,8 +9,10 @@ import { EAction, EWorkflowNodeType, WorkflowEdge, WorkflowJson, WorkflowNode } 
 import { CheckNever } from '../../utils/apiUtil';
 import { extractLinkedInPublicIdentifier } from '../../utils/general';
 import logger from '../../utils/logger';
+import Slack from '../../utils/slack';
 import { CampaignService } from '../CampaignService';
 import { ConnectedAccountService } from '../ConnectedAccountService';
+import { CsvLead, CsvParseResult } from '../CsvService';
 import { LeadListService } from '../LeadListService';
 import { LeadService } from '../LeadService';
 import { UnipileService } from '../UnipileService';
@@ -71,6 +73,15 @@ export class CampaignManager {
     private leadRepository = new LeadRepository();
     private workflowStepsRepository = new WorkflowStepsRepository();
 
+
+    public async getLeadListData(leadListId: string, organizationId: string): Promise<{ csvData: CsvParseResult; leadList: LeadListResponseDto }> {
+        logger.info('Getting lead list data', { leadListId, organizationId });
+        const leadListService = new LeadListService();
+        const leadList = await leadListService.getLeadListDataById(leadListId, organizationId);
+        logger.info('Lead list retrieved', { leadListId, leadsCount: leadList?.csvData?.data?.length || 0 });
+        return leadList;
+    }
+
     public async verifyUnipileAccount(sender_account: string) {
         const account = await this.connectedAccountService.getAccountById(sender_account);
 
@@ -122,35 +133,48 @@ export class CampaignManager {
             logger.info('Restarting failed campaign', { campaignId });
         }
 
-        logger.info('Getting lead list data', { campaignId });
-        const leadList = await this.leadListService.getLeadListDataById(campaign.prospect_list, campaign.organization_id);
-        logger.info('Lead list retrieved', { leadListId: campaign.prospect_list, leadsCount: leadList?.csvData?.data?.length || 0 });
+        const leadList = await this.getLeadListData(campaign.prospect_list, campaign.organization_id!);
         const leads = leadList?.csvData?.data || [];
+
         if (leads.length === 0) {
             logger.warn('No leads found in prospect list', { campaignId });
             return;
         }
-        const leadsToCreate: LeadInsertDto[] = leads.map(lead => ({
-            first_name: lead.first_name,
-            last_name: lead.last_name,
-            full_name: lead.first_name + ' ' + lead.last_name,
-            organization_id: campaign.organization_id!,
-            campaign_id: campaignId,
-            source: 'CSV',
-            linkedin_url: lead.linkedin_url,
-            company: lead.company,
-            title: lead.title,
-            phone: lead.phone,
-        }));
-        await this.leadService.bulkCreate(leadsToCreate);
+
+        await this.entryLeadsIntoDb(leads, campaign.organization_id!, campaignId);
+        const dbLeads = await this.leadService.getAllByCampaignId(campaignId);
+        const totalLeadsToProcess = dbLeads.length;
+
         const now = new Date().toISOString();
-        await this.campaignService.updateCampaign(campaignId, {
-            status: CampaignStatus.IN_PROGRESS,
-        });
+        await this.campaignService.updateCampaign(campaignId, { status: CampaignStatus.IN_PROGRESS });
+
         logger.info('Campaign started successfully', {
             campaignId,
             status: CampaignStatus.IN_PROGRESS,
+            totalLeadsToProcess,
             startedAt: now,
+        });
+    }
+
+    private async entryLeadsIntoDb(leads: CsvLead[], organization_id: string, campaign_id: string) {
+        const leadService = new LeadService();
+        logger.info('Entering leads into database');
+        await leads.chunked(5).forEachAsyncOneByOne(async chunk => {
+            await chunk.forEachAsyncParallel(async lead => {
+                const leadDto: LeadInsertDto = {
+                    first_name: lead.first_name,
+                    last_name: lead.last_name,
+                    full_name: lead.first_name + ' ' + lead.last_name,
+                    organization_id: organization_id,
+                    campaign_id: campaign_id,
+                    source: 'CSV',
+                    linkedin_url: lead.linkedin_url,
+                    company: lead.company,
+                    title: lead.title,
+                    phone: lead.phone,
+                };
+                await leadService.createLead(leadDto);
+            });
         });
     }
 
@@ -206,7 +230,8 @@ export class CampaignManager {
 
         const allLeads = await this.leadService.getAllByCampaignId(campaignId);
         if (allLeads.length === 0) {
-            logger.warn('No leads found for campaign', { campaignId });
+            logger.info('No leads left for campaign, marking as completed', { campaignId });
+            await this.campaignService.updateCampaign(campaignId, { status: CampaignStatus.COMPLETED });
             return;
         }
 
@@ -247,6 +272,7 @@ export class CampaignManager {
 
         if (unstartedLeads.length === 0) {
             logger.info('All leads have been started', { campaignId, totalLeads: allLeads.length });
+            await this.campaignService.updateCampaign(campaignId, { status: CampaignStatus.COMPLETED });
             return;
         }
         const shuffledLeads = unstartedLeads.shuffle();
@@ -359,6 +385,7 @@ export class CampaignManager {
 
         try {
             const scheduledCampaigns = await this.campaignService.getCampaignsByStatusAndStartDate();
+            console.log('scheduledCampaigns', scheduledCampaigns);
             if (scheduledCampaigns.length === 0) {
                 logger.info('No scheduled campaigns found to start');
                 return;
@@ -430,10 +457,7 @@ export class CampaignManager {
                     processedCount++;
                 } catch (error) {
                     errorCount++;
-                    logger.error('Failed to process daily leads for campaign', {
-                        campaignId: campaign.id,
-                        error: error instanceof Error ? error.message : String(error),
-                    });
+                    Slack.SendMessage(`Failed to process daily leads for campaign ${campaign.name} with error: ${error instanceof Error ? error.message : String(error)}`)
                 }
             });
 
@@ -553,6 +577,7 @@ export class CampaignManager {
                         accountId: sender.provider_account_id,
                         identifier,
                         notify: false,
+                        leadId: lead.id
                     });
                     if (result.provider === 'LINKEDIN') {
                         executionResult = { provider_id: (result).provider_id };
@@ -592,6 +617,7 @@ export class CampaignManager {
                         accountId: sender.provider_account_id,
                         identifier,
                         notify: false,
+                        leadId: lead.id
                     });
                     let providerId: string;
                     if (profile.provider === "LINKEDIN") {
@@ -626,6 +652,7 @@ export class CampaignManager {
                         accountId: sender.provider_account_id,
                         identifier,
                         notify: false,
+                        leadId: lead.id
                     });
                     let providerId: string;
                     if (profile.provider === "LINKEDIN") {
@@ -648,6 +675,7 @@ export class CampaignManager {
                         accountId: sender.provider_account_id,
                         identifier,
                         notify: false,
+                        leadId: lead.id
                     });
                     let providerId: string;
                     if (profile.provider === "LINKEDIN") {
@@ -669,6 +697,7 @@ export class CampaignManager {
                         accountId: sender.provider_account_id,
                         identifier,
                         notify: false,
+                        leadId: lead.id
                     });
                     let providerId: string;
                     if (profile.provider === "LINKEDIN") {
@@ -697,6 +726,7 @@ export class CampaignManager {
                         accountId: sender.provider_account_id,
                         identifier,
                         notify: false,
+                        leadId: lead.id
                     });
                     let providerId: string;
                     if (profile.provider === "LINKEDIN") {
@@ -714,6 +744,7 @@ export class CampaignManager {
 
                 case EWorkflowNodeType.webhook: {
                     // TODO: Implement webhook call
+                    console.log('webhook called');
                     break;
                 }
 
@@ -753,8 +784,8 @@ export class CampaignManager {
                     const nextStepsInfo = step.raw_response?.nextSteps || [];
                     const pollingStartedAt = step.raw_response?.pollingStartedAt || step.created_at;
 
-                    // TODO: Implement actual message reply check via Unipile API
-                    const hasReplied = false;
+                    // Reply is set by the message webhook when the lead replies; checker only reads persisted state.
+                    const hasReplied = step.raw_response?.hasReplied === true;
 
                     const acceptedPath = nextStepsInfo.find((s: any) => s.conditionalType === 'accepted');
                     const timeoutMs = acceptedPath?.delayMs || 0;
@@ -790,9 +821,11 @@ export class CampaignManager {
                 (error as { body?: { type?: string } })?.body?.type === EProviderError.CannotResendYet ||
                 (error as { body?: { type?: string } })?.body?.type === 'errors/cannot_resend_yet';
             if (isCannotResendYet && step.step_type === EWorkflowNodeType.send_connection_request) {
+                Slack.SendMessage(`Cannot Resend Yet: ${step.step_type}, Step Id: ${step.id}`)
                 await this.handleConnectionRequestRateLimited(sender.id);
             }
             await this.markStepFailed(step.id, message);
+            Slack.SendMessage(`Failed Step: ${step.step_type}, Step Id: ${step.id}, Error: ${message}`)
         }
     }
 
@@ -903,25 +936,32 @@ export class CampaignManager {
                 });
             } else {
                 // Polling complete - either success or timeout
-                const pathType = isSuccess ? 'accepted' : 'not_accepted';
-                const selectedPath = nextStepsInfo.find((s: NextWorkflowStep) => s.conditionalType === pathType);
+                // For check_message_reply: reply = stop workflow (no next step); timeout = continue on not_accepted path.
+                const isMessageReplyStep = stepTypeStr === 'check_message_reply';
+                const stopOnReply = isMessageReplyStep && isSuccess;
+                if (stopOnReply) {
+                    // Lead replied: stop workflow for this lead; do not create any next step.
+                } else {
+                    const pathType = isSuccess ? 'accepted' : 'not_accepted';
+                    const selectedPath = nextStepsInfo.find((s: NextWorkflowStep) => s.conditionalType === pathType);
 
-                if (selectedPath) {
-                    const nextNode = workflow.nodes.find(n => n.id === selectedPath.nodeId);
-                    if (nextNode) {
-                        stepsToCreate.push({
-                            organization_id: currentStep.organization_id,
-                            lead_id: lead.id,
-                            id_in_workflow: selectedPath.nodeId,
-                            step_index: currentStep.step_index + 1,
-                            workflow_type: EWorkflowType.CAMPAIGN_WORKFLOW,
-                            step_type: nextNode.data.type!,
-                            status: EWorkflowStepStatus.PENDING,
-                            retries: 0,
-                            execute_after: Math.floor(Date.now() / 1000),
-                            updated_at: now,
-                            created_at: now,
-                        });
+                    if (selectedPath) {
+                        const nextNode = workflow.nodes.find(n => n.id === selectedPath.nodeId);
+                        if (nextNode) {
+                            stepsToCreate.push({
+                                organization_id: currentStep.organization_id,
+                                lead_id: lead.id,
+                                id_in_workflow: selectedPath.nodeId,
+                                step_index: currentStep.step_index + 1,
+                                workflow_type: EWorkflowType.CAMPAIGN_WORKFLOW,
+                                step_type: nextNode.data.type!,
+                                status: EWorkflowStepStatus.PENDING,
+                                retries: 0,
+                                execute_after: Math.floor(Date.now() / 1000),
+                                updated_at: now,
+                                created_at: now,
+                            });
+                        }
                     }
                 }
                 // Timeout is a valid outcome: we take the not_accepted path; step stays COMPLETE (already set in executeStepAndAddNextStep).

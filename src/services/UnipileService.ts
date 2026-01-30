@@ -3,6 +3,8 @@ import env from '../config/env';
 import { ExternalAPIError, ServiceUnavailableError } from '../errors/AppError';
 import { WorkflowNodeConfig } from '../types/workflow.types';
 import logger from '../utils/logger';
+import { LeadUpdateDto } from '../dto/leads.dto';
+import { LeadRepository } from '../repositories/LeadRepository';
 
 export interface UnipileError {
     error: {
@@ -29,7 +31,7 @@ export interface UnipileError {
  */
 export class UnipileService {
     private static client: UnipileClient | null = null;
-
+    private leadRepository = new LeadRepository();
     constructor() {
         this.initializeClient();
     }
@@ -513,7 +515,7 @@ export class UnipileService {
     /**
      * Visit LinkedIn profile (for tracking) using SDK
      */
-    async visitLinkedInProfile(params: { accountId: string; identifier: string; notify?: boolean }) {
+    async visitLinkedInProfile(params: { accountId: string; identifier: string; leadId: string; notify?: boolean }) {
         if (!UnipileService.client) {
             throw new ServiceUnavailableError('Unipile service not configured');
         }
@@ -528,6 +530,23 @@ export class UnipileService {
                 accountId: params.accountId,
                 identifier: params.identifier,
             });
+
+            if (response.provider === 'LINKEDIN') {
+                const leadUpdate: LeadUpdateDto = {
+                    full_name: ((response?.first_name ?? '').trim() + ' ' + (response?.last_name ?? "").trim()).trim(),
+                    first_name: response?.first_name,
+                    last_name: response?.last_name,
+                    email: response?.contact_info?.emails?.[0],
+                    phone: response?.contact_info?.phones?.[0],
+                    title: response.headline,
+                    company: response?.work_experience?.find(it => it.current === true)?.company || 'NONE',
+                    location: response?.location,
+                    linkedin_url: response?.public_profile_url,
+                    linkedin_id: response.provider_id,
+                    updated_at: new Date().toISOString()
+                }
+                await this.leadRepository.update(params.leadId, leadUpdate);
+            }
 
             return response;
         } catch (error) {

@@ -57,4 +57,25 @@ export class WorkflowStepsRepository extends BaseRepository<WorkflowStepResponse
         if (error) throw error;
         return (data || []) as WorkflowStepResponseDto[];
     }
+
+    public async findByLeadIdsWhereStepTypeIs(leadIds: string[], stepType: string): Promise<WorkflowStepResponseDto[]> {
+        if (leadIds.length === 0) return [];
+        const { data, error } = await this.client
+            .from(this.tableName)
+            .select('*')
+            .in('lead_id', leadIds)
+            .eq('step_type', stepType)
+            .eq('status', EWorkflowStepStatus.PENDING);
+        if (error) throw error;
+        return (data || []) as WorkflowStepResponseDto[];
+    }
+
+    public async updateMany(stepIds: string[], data: UpdateWorkflowStepDto): Promise<WorkflowStepResponseDto[]> {
+        const { data: updatedData, error } = await this.client
+            .from(this.tableName)
+            .update(data)
+            .in('id', stepIds);
+        if (error) throw error;
+        return (updatedData || []) as WorkflowStepResponseDto[];
+    }
 }

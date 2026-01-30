@@ -1,9 +1,10 @@
 import { Request, Response } from 'express';
 import { CampaignManager } from '../../services/crons/CampaignWorkflows';
 import { CampaignService } from '../../services/CampaignService';
-import { ForbiddenError, NotFoundError } from '../../errors/AppError';
+import { DisplayError, ForbiddenError, NotFoundError } from '../../errors/AppError';
 import ClentoAPI from '../../utils/apiUtil';
 import '../../utils/expressExtensions';
+import { CampaignStatus } from '../../dto/campaigns.dto';
 
 class PauseCampaignAPI extends ClentoAPI {
     public path = '/api/campaigns/pause';
@@ -24,6 +25,14 @@ class PauseCampaignAPI extends ClentoAPI {
         }
         if (campaign.organization_id !== organizationId) {
             throw new ForbiddenError('You are not allowed to access this campaign');
+        }
+
+        if (campaign?.status === CampaignStatus.COMPLETED) {
+            throw new DisplayError('Campaign is Completed');
+        }
+
+        if (campaign?.status === CampaignStatus.PAUSED) {
+            throw new DisplayError('Campaign is already PAUSED');
         }
 
         await this.campaignManager.pauseCampaign(campaignId);

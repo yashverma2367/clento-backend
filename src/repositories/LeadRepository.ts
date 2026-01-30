@@ -349,4 +349,18 @@ export class LeadRepository extends BaseRepository<LeadResponseDto, LeadInsertDt
             throw error instanceof DatabaseError ? error : new DatabaseError('Failed to get lead statistics');
         }
     }
+
+    async findByLinkedinIds(linkedinIds: string[]): Promise<LeadResponseDto[]> {
+        try {
+            const { data, error } = await this.client.from(this.tableName).select('*').in('linkedin_id', linkedinIds);
+            if (error) {
+                logger.error('Error finding leads by linkedin IDs', { error, linkedinIds });
+                throw new DatabaseError('Failed to find leads');
+            }
+            return data || [];
+        } catch (error) {
+            logger.error('Error in findByLinkedinIds', { error, linkedinIds });
+            throw error instanceof DatabaseError ? error : new DatabaseError('Failed to find leads');
+        }
+    }
 }

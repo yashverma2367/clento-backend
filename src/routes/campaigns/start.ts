@@ -4,6 +4,7 @@ import ClentoAPI from '../../utils/apiUtil';
 import '../../utils/expressExtensions';
 import { CampaignService } from '../../services/CampaignService';
 import { DisplayError } from '../../errors/AppError';
+import { CampaignStatus } from '../../dto/campaigns.dto';
 
 class StartCampaignAPI extends ClentoAPI {
     public path = '/api/campaigns/start';
@@ -18,6 +19,14 @@ class StartCampaignAPI extends ClentoAPI {
         const campaign = await this.campaignService.getCampaignById(campaignId);
         if(campaign?.organization_id !== req.organizationId) {
             throw new DisplayError('You are not allowed to access this campaign');
+        }
+
+        if(campaign?.status === CampaignStatus.COMPLETED) {
+            throw new DisplayError('Campaign is Completed');
+        }
+
+        if(campaign?.status === CampaignStatus.IN_PROGRESS) {
+            throw new DisplayError('Campaign is already running');
         }
 
         await this.campaignManager.startCampaign(campaignId);

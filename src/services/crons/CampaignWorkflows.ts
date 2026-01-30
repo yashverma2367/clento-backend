@@ -26,6 +26,93 @@ interface NextWorkflowStep {
     conditionalType?: 'accepted' | 'not_accepted';
 }
 
+/** Random delay (ms) before executing a step so actions don't look bot-like. Range: 8–25 seconds. */
+function getRandomStepDelayMs(): number {
+    const minMs = 8 * 1000;
+    const maxMs = 25 * 1000;
+    return Math.floor(minMs + Math.random() * (maxMs - minMs + 1));
+}
+
+/** Random noise (ms) to add to scheduled step delays so next steps don't all run at the same time. Range: 0–2 minutes. */
+function getRandomDelayNoiseMs(): number {
+    const maxMs = 2 * 60 * 1000;
+    return Math.floor(Math.random() * (maxMs + 1));
+}
+
+function sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/** Parses "HH:mm" or "HH:mm:ss" to minutes since midnight. */
+function parseTimeToMinutes(timeStr: string): number {
+    const parts = timeStr.trim().split(':');
+    const hour = parseInt(parts[0] || '0', 10);
+    const min = parseInt(parts[1] || '0', 10);
+    return hour * 60 + min;
+}
+
+/** Current time in the given timezone as minutes since midnight (0–1439). */
+function getCurrentMinutesInTimezone(timezone: string): number {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        hour: 'numeric',
+        minute: 'numeric',
+        hour12: false,
+    });
+    const parts = formatter.formatToParts(new Date());
+    const hour = parseInt(parts.find(p => p.type === 'hour')?.value ?? '0', 10);
+    const minute = parseInt(parts.find(p => p.type === 'minute')?.value ?? '0', 10);
+    return hour * 60 + minute;
+}
+
+/** Returns true if current time in campaign timezone is within start_time–end_time. No window = always allowed. */
+function isWithinCampaignTimeWindow(campaign: CampaignResponseDto): boolean {
+    const startTime = campaign.start_time?.trim();
+    const endTime = campaign.end_time?.trim();
+    const timezone = campaign.timezone?.trim();
+    if (!startTime || !endTime || !timezone) {
+        return true;
+    }
+    const current = getCurrentMinutesInTimezone(timezone);
+    const startMin = parseTimeToMinutes(startTime);
+    const endMin = parseTimeToMinutes(endTime);
+    if (startMin <= endMin) {
+        return current >= startMin && current <= endMin;
+    }
+    return current >= startMin || current <= endMin;
+}
+
+/** Seconds from now until the next start_time in campaign timezone. If in window, returns 0. */
+function getNextCampaignWindowStartSeconds(campaign: CampaignResponseDto): number {
+    const startTime = campaign.start_time?.trim();
+    const endTime = campaign.end_time?.trim();
+    const timezone = campaign.timezone?.trim();
+    if (!startTime || !endTime || !timezone) {
+        return 0;
+    }
+    const current = getCurrentMinutesInTimezone(timezone);
+    const startMin = parseTimeToMinutes(startTime);
+    const endMin = parseTimeToMinutes(endTime);
+
+    if (startMin <= endMin) {
+        if (current >= startMin && current <= endMin) {
+            return 0;
+        }
+        if (current < startMin) {
+            const minutesUntilStart = startMin - current;
+            return minutesUntilStart * 60;
+        }
+        const minutesUntilStartTomorrow = 24 * 60 - current + startMin;
+        return minutesUntilStartTomorrow * 60;
+    } else {
+        if (current >= startMin || current <= endMin) {
+            return 0;
+        }
+        const minutesUntilStart = startMin - current;
+        return minutesUntilStart * 60;
+    }
+}
+
 export enum EProviderError {
     InvalidAccount = 'errors/invalid_account',
     InvalidRecipient = 'errors/invalid_recipient',
@@ -301,7 +388,16 @@ export class CampaignManager {
         const stepIndex = 0;
         const workflowStepsToStart: CreateWorkflowStepDto[] = [];
 
+        let baseExecuteAfterSeconds = Math.floor(Date.now() / 1000);
+        if (!isWithinCampaignTimeWindow(campaign)) {
+            const nextWindowStartSeconds = getNextCampaignWindowStartSeconds(campaign);
+            if (nextWindowStartSeconds > 0) {
+                baseExecuteAfterSeconds = Math.floor(Date.now() / 1000) + nextWindowStartSeconds;
+            }
+        }
+
         leadsToStart.forEach(lead => {
+            const startOffsetMs = getRandomDelayNoiseMs();
             workflowStepsToStart.push({
                 organization_id: campaign.organization_id!,
                 lead_id: lead.id,
@@ -311,7 +407,7 @@ export class CampaignManager {
                 step_type: firstNode.data.type as EWorkflowNodeType,
                 status: EWorkflowStepStatus.PENDING,
                 retries: 0,
-                execute_after: Math.floor(Date.now() / 1000),
+                execute_after: baseExecuteAfterSeconds + Math.floor(startOffsetMs / 1000),
                 updated_at: now,
                 created_at: now,
             });
@@ -551,6 +647,8 @@ export class CampaignManager {
     }
 
     public async executeStepAndAddNextStep(lead: LeadResponseDto, step: WorkflowStepResponseDto, sender: ConnectedAccountResponseDto, workflowData: WorkflowJson, campaign: CampaignResponseDto) {
+        await sleep(getRandomStepDelayMs());
+
         const identifier = extractLinkedInPublicIdentifier(lead.linkedin_url!);
         if (!identifier) {
             await this.markStepFailed(step.id, 'Invalid LinkedIn URL');
@@ -925,7 +1023,7 @@ export class CampaignManager {
                     step_type: currentStep.step_type,
                     status: EWorkflowStepStatus.PENDING,
                     retries: currentStep.retries + 1,
-                    execute_after: Math.floor((Date.now() + 60 * 60 * 1000) / 1000),
+                    execute_after: Math.floor((Date.now() + 60 * 60 * 1000 + getRandomDelayNoiseMs()) / 1000),
                     raw_response: {
                         providerId: executionResult.providerId,
                         nextSteps: nextStepsInfo,
@@ -983,7 +1081,7 @@ export class CampaignManager {
                     step_type: pollStepType,
                     status: EWorkflowStepStatus.PENDING,
                     retries: 0,
-                    execute_after: Math.floor((Date.now() + 60 * 60 * 1000) / 1000),
+                    execute_after: Math.floor((Date.now() + 60 * 60 * 1000 + getRandomDelayNoiseMs()) / 1000),
                     raw_response: {
                         providerId: executionResult.providerId,
                         pollingStartedAt: executionResult.pollingStartedAt,
@@ -1000,6 +1098,7 @@ export class CampaignManager {
             } else {
                 // Create all next steps (non-conditional)
                 nextSteps.forEach(nextStep => {
+                    const delayWithNoise = nextStep.delayMs + getRandomDelayNoiseMs();
                     stepsToCreate.push({
                         organization_id: currentStep.organization_id,
                         lead_id: lead.id,
@@ -1009,7 +1108,7 @@ export class CampaignManager {
                         step_type: nextStep.targetNode.data.type as EWorkflowNodeType,
                         status: EWorkflowStepStatus.PENDING,
                         retries: 0,
-                        execute_after: Math.floor((Date.now() + nextStep.delayMs) / 1000),
+                        execute_after: Math.floor((Date.now() + delayWithNoise) / 1000),
                         updated_at: now,
                         created_at: now,
                     });
@@ -1040,6 +1139,24 @@ export class CampaignManager {
             logger.error('Sender account not found', { campaignId: campaign.id });
             return;
         }
+
+        if (!isWithinCampaignTimeWindow(campaign)) {
+            const nextStartSeconds = getNextCampaignWindowStartSeconds(campaign);
+            if (nextStartSeconds > 0) {
+                const executeAfter = Math.floor(Date.now() / 1000) + nextStartSeconds;
+                await this.workflowStepsRepository.update(step.id, {
+                    execute_after: executeAfter,
+                    updated_at: new Date().toISOString(),
+                });
+                logger.debug('Step deferred outside campaign time window', {
+                    stepId: step.id,
+                    campaignId: campaign.id,
+                    executeAfter,
+                });
+            }
+            return;
+        }
+
         const sender = await this.connectedAccountService.getAccountById(campaign.sender_account);
         const { workflowData } = await this.campaignService.getWorkflow(campaign);
         await this.executeStepAndAddNextStep(lead, step, sender, workflowData, campaign);
@@ -1048,8 +1165,7 @@ export class CampaignManager {
     public async processDailyLeads() {
         const stepsToExecute = await this.workflowStepsRepository.getDailyStepsToExecute();
         logger.info('Processing pending workflow steps', { count: stepsToExecute.length });
-
-        for (const step of stepsToExecute) {
+        await stepsToExecute.forEachAsyncOneByOne(async step => {
             try {
                 await this.processSingleLead(step);
             } catch (error) {
@@ -1059,8 +1175,7 @@ export class CampaignManager {
                     logger.error('Failed to mark step as failed', { stepId: step.id, err })
                 );
             }
-        }
-
+        })
         logger.info('Completed processing pending workflow steps');
     }
 }
